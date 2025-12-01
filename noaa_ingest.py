@@ -8,8 +8,14 @@ from datetime import datetime
 
 # Configs
 STATIONS = {
-    "IAD": "72403093738",   # Dulles
-    "BOS": "72509014739"    # Logan
+    "IAD": "72403093738",   # Washington dulles
+    "BOS": "72509014739",   # Boston 
+    "ATL": "72219013874",   # Atlanta 
+    "ORD": "72530094846",   # Chicago 
+    "DFW": "72259003927",   # Dallas–Fort Worth
+    "LAX": "72295023174",   # LAX
+    "SEA": "72793024233",   # Seattle-Tacoma
+
 }
 YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
@@ -94,8 +100,13 @@ def load_noaa_hourly():
             SELECT
             -- Map numeric NOAA station codes to readable labels
             CASE 
-                WHEN STATION = '72403093738' THEN 'IAD'
-                WHEN STATION = '72509014739' THEN 'BOS'   
+                WHEN station = '72403093738' THEN 'IAD'   -- Dulles
+                WHEN station = '72509014739' THEN 'BOS'   -- Boston 
+                WHEN station = '72219013874' THEN 'ATL'   -- Atlanta
+                WHEN station = '72530094846' THEN 'ORD'   -- Chicago 
+                WHEN station = '72259003927' THEN 'DFW'   -- Dallas-Fort Worth
+                WHEN station = '72295023174' THEN 'LAX'   -- Los Angeles
+                WHEN station = '72793024233' THEN 'SEA'   -- Seattle 
                 ELSE CAST(STATION AS VARCHAR)
             END AS station,
 
