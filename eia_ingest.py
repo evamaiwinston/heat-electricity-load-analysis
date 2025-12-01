@@ -12,7 +12,8 @@ DB_PATH = Path("heatgrid.duckdb")
 EIA_RAW_TABLE = "eia_hourly_raw"
 EIA_HOURLY_TABLE = "eia_load_hourly"
 
-PARENTS = ["PJM", "ISNE"] # Dc area and New england 
+PARENTS = ["PJM", "ISONE"]  
+SUBBAS = ["DOM", "4007", "4008"] # Dc area and New england 
 
 START = "2019-01-01T00"
 END   = "2025-08-27T04"
@@ -33,7 +34,7 @@ logger.info("--------- New EIA run ---------")
 
 
 # Fetch from API
-def fetch_eia_data(parents, start, end):
+def fetch_eia_data(subbas, start, end):
     if not EIA_API_KEY:
         raise RuntimeError("EIA_API_KEY is not set in the environment")
     
@@ -41,8 +42,8 @@ def fetch_eia_data(parents, start, end):
     offset = 0
     page_size = 5000
 
-    logger.info(f"[EIA] Fetching parents={parents} from {start} to {end}")
-    print(f"Fetching EIA data for parents={parents} ...")
+    logger.info(f"[EIA] Fetching subbas={subbas} from {start} to {end}")
+    print(f"Fetching EIA data for subbas={subbas} ...")
 
     while True:
         params = {
@@ -57,7 +58,8 @@ def fetch_eia_data(parents, start, end):
             "length": page_size,
         }
 
-        params["facets[parent][]"] = parents
+        for i, s in enumerate(subbas):
+            params[f"facets[subba][{i}]"] = s
 
 
         logger.info(f"[EIA] Request offset={offset}")
@@ -89,7 +91,7 @@ def load_eia_to_duckdb():
     con = None
     try:
 
-        rows = fetch_eia_data(PARENTS, START, END)
+        rows = fetch_eia_data(SUBBAS, START, END)
         if not rows:
             print("No EIA rows returned. Check API key and params")
             return
@@ -108,7 +110,9 @@ def load_eia_to_duckdb():
             raise RuntimeError(f"EIA response missing columns: {missing}")
 
         # Raw table
-        con.execute(f"DROP TABLE IF EXISTS {EIA_RAW_TABLE};")
+        con.execute(f"""
+                    DROP TABLE IF EXISTS {EIA_RAW_TABLE};
+        """)
         logger.info(f"Dropped {EIA_RAW_TABLE} if existed")
 
         con.register("eia_df", df)
