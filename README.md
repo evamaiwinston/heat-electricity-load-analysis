@@ -1,4 +1,4 @@
-# heat-grid-analysis
+# heat-electricity-analysis
 ### Names
 Karen Guzman and Eva Winston
 
