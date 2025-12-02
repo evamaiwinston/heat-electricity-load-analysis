@@ -22,7 +22,7 @@ PARENT_SUBBAS = {
 START = "2019-01-01T00"
 END   = "2025-08-27T04"
 
-BASE_URL = "https://api.eia.gov/v2/electricity/rto/region-sub-ba-data/data/"
+EIA_BASE_URL = "https://api.eia.gov/v2/electricity/rto/region-sub-ba-data/data/"
 
 EIA_API_KEY = os.getenv("EIA_API_KEY")
 
@@ -76,7 +76,7 @@ def fetch_eia_data(parent_subbas: dict, start: str, end: str):
                 logger.info(f"[EIA] Request offset={offset}")
                 if offset % 10000 == 0:
                     print(f"[EIA] Progress: offset={offset} rows fetched")
-                r = requests.get(BASE_URL, params=params, timeout=30)
+                r = requests.get(EIA_BASE_URL, params=params, timeout=30)
                 r.raise_for_status()
                 payload = r.json()
 
