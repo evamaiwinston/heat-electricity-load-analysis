@@ -11,7 +11,6 @@ STATIONS = {
     "IAD": "72403093738",   # Washington dulles
     "BOS": "72509014739",   # Boston 
     "NYC": "74486094789",   # NYC 
-    "DFW": "72259003927",   # Dallas–Fort Worth
     "LAX": "72295023174",   # LAX
 
 }
@@ -101,7 +100,6 @@ def load_noaa_hourly():
                 WHEN station = '72403093738' THEN 'IAD'   -- Dulles
                 WHEN station = '72509014739' THEN 'BOS'   -- Boston 
                 WHEN station = '74486094789' THEN 'NYC'   -- New York City 
-                WHEN station = '72259003927' THEN 'DFW'   -- Dallas-Fort Worth
                 WHEN station = '72295023174' THEN 'LAX'   -- Los Angeles 
                 ELSE CAST(STATION AS VARCHAR)
             END AS station,

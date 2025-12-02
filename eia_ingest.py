@@ -16,7 +16,6 @@ PARENT_SUBBAS = {
     "PJM":  ["DOM"],            # DC / NOVA
     "ISNE": ["4007", "4008"],   # Western/Central MA + Northeast MA
     "NYIS": ["ZONJ", "ZONK"],   # NYC + Long Island
-    "ERCO": ["NCEN"],           # Texas: North Central
     "CISO": ["SCE"],            # Southern California Edison (LA area)
 }
 
