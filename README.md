@@ -22,10 +22,10 @@ The bar chart reinforces this. IAD experiences unusually high load on both cold 
 
 
 ### Visualization
-![alt text](bar_temp_vs_load.png)
-![alt text](daily_avg_load_over_time.png)
-![alt text](scatter_quadratic_fits.png)
-![alt text](scatter_temp_vs_load.png)
+![alt text](figures/bar_temp_vs_load.png)
+![alt text](figures/daily_avg_load_over_time.png)
+![alt text](figures/scatter_quadratic_fits.png)
+![alt text](figures/scatter_temp_vs_load.png)
 
 ### Link
 https://github.com/evamaiwinston/heat-grid-analysis
