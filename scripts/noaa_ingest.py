@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 
+
 # Configs
 STATIONS = {
     "IAD": "72403093738",   # Washington dulles
@@ -16,7 +17,7 @@ STATIONS = {
 }
 YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
-BASE_URL = "https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station}.csv"
+NOAA_BASE_URL = "https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station}.csv"
 
 DATA_DIR = Path("data")
 DB_PATH = Path("heatgrid.duckdb")
@@ -46,7 +47,7 @@ def load_noaa_hourly():
         print("Downloading NOAA data...") 
         for code, station_id in STATIONS.items():
             for year in YEARS:
-                url = BASE_URL.format(year=year, station=station_id)
+                url = NOAA_BASE_URL.format(year=year, station=station_id)
                 out = DATA_DIR / f"{code}_{year}.csv"
 
                 if out.exists():
