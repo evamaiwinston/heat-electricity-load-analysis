@@ -1,3 +1,5 @@
 data/
 *.log
 heatgrid.duckdb
+data_centres.json
+data_centres.parquet
