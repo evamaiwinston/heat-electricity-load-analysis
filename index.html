@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NoVA Data Center Dashboard</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-width: 300px;
+        }
+        
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+
+        .sidebar {
+        position: absolute;
+        top: 0;
+        right: -400px;
+        width: 400px;
+        height: 100vh;
+        background: white;
+        box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+        padding: 30px;
+        overflow-y: auto;
+        transition: right 0.3s ease;
+    }
+
+    .sidebar.active {
+        right: 0;
+    }
+
+    .close-btn {
+        float: right;
+        cursor: pointer;
+        font-size: 24px;
+    }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h1>NoVA Data Centers</h1>
+        <p>149 facilities consuming ~20 GW</p>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+        <span class="close-btn" onclick="closeSidebar()">×</span>
+        <div id="facility-details"></div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+<script>
+    // Initialize map centered on NoVA
+    var map = L.map('map').setView([38.95, -77.35], 11);
+    
+    // Add base map
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Load US state boundaries and grey out non-Virginia states
+    fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
+        .then(response => response.json())
+        .then(states => {
+            L.geoJSON(states, {
+                style: function(feature) {
+                    if (feature.properties.name === 'Virginia') {
+                        return {
+                            fillColor: 'transparent',
+                            fillOpacity: 0,
+                            color: '#333',
+                            weight: 2
+                        };
+                    } else {
+                        return {
+                            fillColor: '#d3d3d3',
+                            fillOpacity: 0.7,
+                            color: '#999',
+                            weight: 1
+                        };
+                    }
+                },
+                interactive: false
+            }).addTo(map);
+        });
+
+    // Load data
+    fetch('data.json')
+        .then(response => response.json())
+        .then(data => {
+            // Sort so null capacity (grey) renders first (behind colored markers)
+            data.sort((a, b) => (a.capacity_mw === null ? -1 : 1) - (b.capacity_mw === null ? -1 : 1));
+            data.forEach(facility => {
+                // Create square marker using DivIcon
+                var color = facility.capacity_mw === null ? '#999' : getColor(facility.capacity_mw);
+                var icon = L.divIcon({
+                    className: '',
+                    html: '<div style="width:12px;height:12px;background:' + color + ';opacity:0.85;"></div>',
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+                var marker = L.marker([facility.lat, facility.lon], { icon: icon });
+
+                // Instead of bindPopup, use click event
+                marker.on('click', function() {
+                    showFacilityDetails(facility);
+                });
+
+                marker.addTo(map);
+            });
+        });
+    
+    // Color scale by capacity (MW) — magenta/bright orange palette
+    function getColor(mw) {
+        return mw > 200 ? '#cc0078' :
+               mw > 75  ? '#ff1493' :
+               mw > 20  ? '#ff6600' :
+                          '#ffaa00';
+    }
+
+    function fmt(val, suffix) {
+        if (val === null || val === undefined) return 'N/A';
+        return typeof val === 'number' ? val.toLocaleString() + (suffix || '') : val;
+    }
+
+    function showFacilityDetails(facility) {
+        document.getElementById('sidebar').classList.add('active');
+
+        const households = facility.capacity_mw !== null
+            ? Math.round(facility.capacity_mw * 1000 / 1.2).toLocaleString()
+            : 'N/A';
+
+        document.getElementById('facility-details').innerHTML = `
+            <h2>${facility.brand}</h2>
+            <p style="color:#666;margin-top:-8px">${facility.company}</p>
+            <p>${facility.address || 'N/A'}</p>
+            <p>${facility.city}, ${facility.county} County, VA ${facility.zip}</p>
+
+            <h3>Power & Load</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td>Capacity</td><td style="text-align:right"><strong>${fmt(facility.capacity_mw, ' MW')}</strong></td></tr>
+                <tr><td>Est. Load (30%)</td><td style="text-align:right">${fmt(facility.est_load_30_mw, ' MW')}</td></tr>
+                <tr><td>Est. Load (50%)</td><td style="text-align:right">${fmt(facility.est_load_50_mw, ' MW')}</td></tr>
+                <tr><td>Est. Load (60%)</td><td style="text-align:right">${fmt(facility.est_load_60_mw, ' MW')}</td></tr>
+                <tr><td>Annual Load (50%)</td><td style="text-align:right">${fmt(facility.annual_load_50_twh, ' TWh')}</td></tr>
+                <tr><td>Equivalent Homes</td><td style="text-align:right">${households}</td></tr>
+            </table>
+
+            <h3>Environmental</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td>CO₂ Emissions</td><td style="text-align:right">${fmt(facility.co_tons_per_year, ' tons/yr')}</td></tr>
+                <tr><td>Water Stress</td><td style="text-align:right">${fmt(facility.water_stress_index)}</td></tr>
+            </table>
+
+            <h3>Community</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td>Population within 1 mi</td><td style="text-align:right">${fmt(facility.pop_within_mile)}</td></tr>
+            </table>
+
+            <h3>EJ Percentiles</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td>Particulate Matter</td><td style="text-align:right">${fmt(facility.ej_particulate_matter)}</td></tr>
+                <tr><td>Ozone</td><td style="text-align:right">${fmt(facility.ej_ozone)}</td></tr>
+                <tr><td>Diesel PM</td><td style="text-align:right">${fmt(facility.ej_diesel_pm)}</td></tr>
+                <tr><td>Nitrogen Dioxide</td><td style="text-align:right">${fmt(facility.ej_nitrogen_dioxide)}</td></tr>
+                <tr><td>Traffic</td><td style="text-align:right">${fmt(facility.ej_traffic)}</td></tr>
+                <tr><td>Toxic Air</td><td style="text-align:right">${fmt(facility.ej_toxic_air)}</td></tr>
+                <tr><td>Hazardous Waste</td><td style="text-align:right">${fmt(facility.ej_hazardous_waste)}</td></tr>
+                <tr><td>Superfund</td><td style="text-align:right">${fmt(facility.ej_superfund)}</td></tr>
+                <tr><td>RMP Facilities</td><td style="text-align:right">${fmt(facility.ej_rmp)}</td></tr>
+                <tr><td>Underground Storage</td><td style="text-align:right">${fmt(facility.ej_ust)}</td></tr>
+                <tr><td>Wastewater</td><td style="text-align:right">${fmt(facility.ej_wastewater)}</td></tr>
+                <tr><td>Lead Paint</td><td style="text-align:right">${fmt(facility.ej_lead_paint)}</td></tr>
+                <tr><td>Drinking Water</td><td style="text-align:right">${fmt(facility.ej_drinking_water)}</td></tr>
+            </table>
+        `;
+    }
+
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('active');
+    }
+</script>
+</body>
+</html>
