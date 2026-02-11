@@ -74,8 +74,9 @@ con.execute("""
             TRY_CAST("us percentile for ej index for drinking water non-compliance" AS DOUBLE) AS ej_drinking_water
             
             FROM data_centers_va
-            WHERE county IS NOT NULL
-                AND county IN ('Loudoun', 'Fairfax', 'Prince William', 'Culpeper', 'Fauquier');
+            WHERE county IN ('Loudoun', 'Fairfax', 'Prince William', 'Fauqier', 'Culpeper');
+
+                
                 
  """)
 
