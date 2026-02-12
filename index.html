@@ -5,24 +5,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         body {
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Inter', sans-serif;
         }
         
         #map {
-            height: 100vh;
+            height: 100%;
             width: 100%;
         }
         
         .info-panel {
             position: absolute;
             top: 20px;
-            left: 20px;
+            left: 60px;
             background: white;
             padding: 20px;
             border-radius: 8px;
@@ -37,6 +42,7 @@
         }
 
         .sidebar {
+        box-sizing: border-box;
         position: absolute;
         top: 0;
         right: -400px;
@@ -59,27 +65,93 @@
         cursor: pointer;
         font-size: 24px;
     }
+
+    .tab-bar {
+        display: flex;
+        background: #fff;
+        border-bottom: 1px solid #e5e7eb;
+        z-index: 1001;
+        position: relative;
+    }
+
+    .tab-btn {
+        padding: 12px 24px;
+        font-family: 'Inter', sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        color: #888;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        transition: color 0.2s, border-color 0.2s;
+    }
+
+    .tab-btn:hover {
+        color: #333;
+    }
+
+    .tab-btn.active {
+        color: #111;
+        font-weight: 600;
+        border-bottom: 2px solid #111;
+    }
+
+    .tab-panel {
+        display: none;
+        height: calc(100vh - 45px);
+        position: relative;
+    }
+
+    .tab-panel.active {
+        display: block;
+    }
     </style>
 </head>
 <body>
-    <div class="info-panel">
-        <h1>NoVA Data Centers</h1>
-        <p>149 facilities consuming ~20 GW</p>
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('map-tab', this)">Map</button>
+        <button class="tab-btn" onclick="switchTab('tab2', this)">Tab 2</button>
     </div>
 
-    <div class="sidebar" id="sidebar">
-        <span class="close-btn" onclick="closeSidebar()">×</span>
-        <div id="facility-details"></div>
+    <div id="map-tab" class="tab-panel active">
+        <div class="info-panel">
+            <div style="font-weight:600;margin-bottom:8px;font-size:14px;">Capacity (MW)</div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;background:#a00060;flex-shrink:0;"></div> &gt; 200 MW</div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;background:#ff69b4;flex-shrink:0;"></div> 75 – 200 MW</div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;background:#ff6600;flex-shrink:0;"></div> 20 – 75 MW</div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;background:#ffaa00;flex-shrink:0;"></div> ≤ 20 MW</div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;background:#999;flex-shrink:0;"></div> Unknown</div>
+            </div>
+        </div>
+
+        <div class="sidebar" id="sidebar">
+            <span class="close-btn" onclick="closeSidebar()">×</span>
+            <div id="facility-details"></div>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <div id="tab2" class="tab-panel">
+        <div id="load-chart" style="width:50%;height:50%;"></div>
+        <div id="load-chart-summer" style="width:50%;height:50%;"></div>
     </div>
     
-    <div id="map"></div>
-    
+    <!-- Plotly JS -->
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
 <script>
     // Initialize map centered on NoVA
-    var map = L.map('map').setView([38.95, -77.35], 11);
+    var map = L.map('map', {
+        wheelPxPerZoomLevel: 120,
+        zoomSnap: 0.5,
+        zoomDelta: 0.5
+    }).setView([38.95, -77.35], 11);
     
     // Add base map
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -92,19 +164,47 @@
         .then(states => {
             L.geoJSON(states, {
                 style: function(feature) {
-                    if (feature.properties.name === 'Virginia') {
+                    if (feature.properties.name === 'Virginia' || feature.properties.name === 'District of Columbia') {
                         return {
                             fillColor: 'transparent',
                             fillOpacity: 0,
-                            color: '#333',
-                            weight: 2
+                            color: 'transparent',
+                            weight: 0
                         };
                     } else {
                         return {
                             fillColor: '#d3d3d3',
                             fillOpacity: 0.7,
-                            color: '#999',
-                            weight: 1
+                            color: 'transparent',
+                            weight: 0
+                        };
+                    }
+                },
+                interactive: false
+            }).addTo(map);
+        });
+
+    // Load Virginia counties and grey out all except target counties
+    var focusCounties = ['51107', '51059', '51153', '51047', '51179', '51061', '51683', '51685', '51600', '51013', '51610', '51510']; // Loudoun, Fairfax, Prince William, Culpeper, Stafford, Fauquier, Manassas, Manassas Park, Fairfax City, Arlington, Falls Church, Alexandria
+    fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
+        .then(response => response.json())
+        .then(counties => {
+            counties.features = counties.features.filter(f => f.id && f.id.startsWith('51'));
+            L.geoJSON(counties, {
+                style: function(feature) {
+                    if (focusCounties.includes(feature.id)) {
+                        return {
+                            fillColor: 'transparent',
+                            fillOpacity: 0,
+                            color: 'transparent',
+                            weight: 0
+                        };
+                    } else {
+                        return {
+                            fillColor: '#d3d3d3',
+                            fillOpacity: 0.7,
+                            color: 'transparent',
+                            weight: 0
                         };
                     }
                 },
@@ -123,11 +223,14 @@
                 var color = facility.capacity_mw === null ? '#999' : getColor(facility.capacity_mw);
                 var icon = L.divIcon({
                     className: '',
-                    html: '<div style="width:12px;height:12px;background:' + color + ';opacity:0.85;"></div>',
-                    iconSize: [12, 12],
-                    iconAnchor: [6, 6]
+                    html: '<div style="width:18px;height:18px;background:' + color + ';opacity:0.85;"></div>',
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
                 });
-                var marker = L.marker([facility.lat, facility.lon], { icon: icon });
+                var marker = L.marker([facility.lat, facility.lon], {
+                    icon: icon,
+                    zIndexOffset: facility.capacity_mw === null ? -1000 : 0
+                });
 
                 // Instead of bindPopup, use click event
                 marker.on('click', function() {
@@ -140,8 +243,8 @@
     
     // Color scale by capacity (MW) — magenta/bright orange palette
     function getColor(mw) {
-        return mw > 200 ? '#cc0078' :
-               mw > 75  ? '#ff1493' :
+        return mw > 200 ? '#a00060' :
+               mw > 75  ? '#ff69b4' :
                mw > 20  ? '#ff6600' :
                           '#ffaa00';
     }
@@ -149,6 +252,26 @@
     function fmt(val, suffix) {
         if (val === null || val === undefined) return 'N/A';
         return typeof val === 'number' ? val.toLocaleString() + (suffix || '') : val;
+    }
+
+    function waterStressStyle(val) {
+        if (!val) return '';
+        if (val.startsWith('High')) return 'background:#fee2e2;padding:2px 6px;border-radius:3px;font-size:13px;';
+        if (val.startsWith('Low')) return 'background:#dbeafe;padding:2px 6px;border-radius:3px;font-size:13px;';
+        return 'background:#fef3c7;padding:2px 6px;border-radius:3px;font-size:13px;';
+    }
+
+    function ejBar(label, val) {
+        const pct = (val !== null && val !== undefined) ? val : null;
+        const pos = pct !== null ? pct + '%' : '0%';
+        const display = pct !== null ? Math.round(pct) : 'N/A';
+        return `
+            <div style="margin-bottom:12px;">
+                <div style="font-size:13px;color:#555;margin-bottom:4px;">${label} <span style="float:right;font-weight:600;">${display}${pct !== null ? 'th' : ''}</span></div>
+                <div style="position:relative;height:6px;background:#e5e7eb;border-radius:3px;">
+                    ${pct !== null ? '<div style="position:absolute;top:-3px;left:calc(' + pos + ' - 4px);width:8px;height:12px;background:#333;border-radius:2px;"></div>' : ''}
+                </div>
+            </div>`;
     }
 
     function showFacilityDetails(facility) {
@@ -161,51 +284,133 @@
         document.getElementById('facility-details').innerHTML = `
             <h2>${facility.brand}</h2>
             <p style="color:#666;margin-top:-8px">${facility.company}</p>
-            <p>${facility.address || 'N/A'}</p>
-            <p>${facility.city}, ${facility.county} County, VA ${facility.zip}</p>
+            <p style="font-size:12px;color:#888;margin:2px 0;line-height:1.3;">${facility.address || 'N/A'}<br>${facility.city}, ${facility.county} County, VA ${facility.zip}</p>
 
-            <h3>Power & Load</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td>Capacity</td><td style="text-align:right"><strong>${fmt(facility.capacity_mw, ' MW')}</strong></td></tr>
-                <tr><td>Est. Load (30%)</td><td style="text-align:right">${fmt(facility.est_load_30_mw, ' MW')}</td></tr>
-                <tr><td>Est. Load (50%)</td><td style="text-align:right">${fmt(facility.est_load_50_mw, ' MW')}</td></tr>
-                <tr><td>Est. Load (60%)</td><td style="text-align:right">${fmt(facility.est_load_60_mw, ' MW')}</td></tr>
-                <tr><td>Annual Load (50%)</td><td style="text-align:right">${fmt(facility.annual_load_50_twh, ' TWh')}</td></tr>
-                <tr><td>Equivalent Homes</td><td style="text-align:right">${households}</td></tr>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px;">
+                <tr>
+                    <td style="padding:6px 4px;color:#555;">Population within 1 mi</td>
+                    <td style="text-align:right;padding:6px 4px;font-weight:600;">${fmt(facility.pop_within_mile)}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 4px;color:#555;">Water Stress Index</td>
+                    <td style="text-align:right;padding:6px 4px;font-weight:600;"><span style="${waterStressStyle(facility.water_stress_index)}">${facility.water_stress_index || 'N/A'}</span></td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 4px;color:#555;">Electric Load Capacity</td>
+                    <td style="text-align:right;padding:6px 4px;font-weight:600;"><span style="background:${facility.capacity_mw !== null ? getColor(facility.capacity_mw) + '30' : 'transparent'};padding:2px 6px;border-radius:3px;">${fmt(facility.capacity_mw, ' MW')}</span></td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 4px;color:#555;">Est. Load (50%)</td>
+                    <td style="text-align:right;padding:6px 4px;font-weight:600;">${fmt(facility.est_load_50_mw, ' MW')}</td>
+                </tr>
+                <tr>
+                    <td style="padding:6px 4px;color:#555;">Annual Load (50%)</td>
+                    <td style="text-align:right;padding:6px 4px;font-weight:600;">${fmt(facility.annual_load_50_twh, ' TWh')}</td>
+                </tr>
             </table>
 
-            <h3>Environmental</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td>CO₂ Emissions</td><td style="text-align:right">${fmt(facility.co_tons_per_year, ' tons/yr')}</td></tr>
-                <tr><td>Water Stress</td><td style="text-align:right">${fmt(facility.water_stress_index)}</td></tr>
-            </table>
+            <div style="background:#f0f4ff;border-radius:6px;padding:10px;margin:12px 0;text-align:center;">
+                <span style="font-size:12px;color:#555;">That's enough to power </span>
+                <strong style="font-size:16px;">${households}</strong>
+                <span style="font-size:12px;color:#555;"> homes</span>
+            </div>
 
-            <h3>Community</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td>Population within 1 mi</td><td style="text-align:right">${fmt(facility.pop_within_mile)}</td></tr>
-            </table>
-
-            <h3>EJ Percentiles</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:14px">
-                <tr><td>Particulate Matter</td><td style="text-align:right">${fmt(facility.ej_particulate_matter)}</td></tr>
-                <tr><td>Ozone</td><td style="text-align:right">${fmt(facility.ej_ozone)}</td></tr>
-                <tr><td>Diesel PM</td><td style="text-align:right">${fmt(facility.ej_diesel_pm)}</td></tr>
-                <tr><td>Nitrogen Dioxide</td><td style="text-align:right">${fmt(facility.ej_nitrogen_dioxide)}</td></tr>
-                <tr><td>Traffic</td><td style="text-align:right">${fmt(facility.ej_traffic)}</td></tr>
-                <tr><td>Toxic Air</td><td style="text-align:right">${fmt(facility.ej_toxic_air)}</td></tr>
-                <tr><td>Hazardous Waste</td><td style="text-align:right">${fmt(facility.ej_hazardous_waste)}</td></tr>
-                <tr><td>Superfund</td><td style="text-align:right">${fmt(facility.ej_superfund)}</td></tr>
-                <tr><td>RMP Facilities</td><td style="text-align:right">${fmt(facility.ej_rmp)}</td></tr>
-                <tr><td>Underground Storage</td><td style="text-align:right">${fmt(facility.ej_ust)}</td></tr>
-                <tr><td>Wastewater</td><td style="text-align:right">${fmt(facility.ej_wastewater)}</td></tr>
-                <tr><td>Lead Paint</td><td style="text-align:right">${fmt(facility.ej_lead_paint)}</td></tr>
-                <tr><td>Drinking Water</td><td style="text-align:right">${fmt(facility.ej_drinking_water)}</td></tr>
-            </table>
+            <h3 style="font-size:13px;margin-top:28px;margin-bottom:14px;">Environmental Justice Scores - National Percentiles</h3>
+            ${ejBar('Particulate Matter', facility.ej_particulate_matter)}
+            ${ejBar('Diesel Particulate Matter', facility.ej_diesel_pm)}
+            ${ejBar('Ozone', facility.ej_ozone)}
+            ${ejBar('Nitrogen Dioxide', facility.ej_nitrogen_dioxide)}
         `;
     }
 
     function closeSidebar() {
         document.getElementById('sidebar').classList.remove('active');
+    }
+
+    var chartBuilt = false;
+
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        btn.classList.add('active');
+        if (tabId === 'map-tab') {
+            map.invalidateSize();
+        }
+        if (tabId === 'tab2' && !chartBuilt) {
+            buildChart();
+        }
+        if (tabId === 'tab2') {
+            Plotly.Plots.resize('load-chart');
+            Plotly.Plots.resize('load-chart-summer');
+        }
+    }
+
+    function buildChart() {
+        chartBuilt = true;
+        fetch('daily_load.json')
+            .then(r => r.json())
+            .then(data => {
+                var colors = { IAD: '#e67e22', BOS: '#3498db', NYC: '#e74c3c' };
+                var order = ['IAD', 'NYC', 'BOS'];
+                var traces = order.map(loc => ({
+                    x: data[loc].dates,
+                    y: data[loc].load,
+                    name: loc,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { width: 1.5, color: colors[loc] },
+                    customdata: data[loc].temp.map(c => [c, Math.round(c * 9/5 + 32)]),
+                    hovertemplate:
+                        '<b>' + loc + '</b>  %{y:.0f} MWh  %{customdata[0]:.0f}\u00B0C/%{customdata[1]}\u00B0F' +
+                        '<extra></extra>'
+                }));
+
+                var layout = {
+                    title: { text: 'Daily Average Load Over Time', font: { family: 'Inter', size: 18 } },
+                    font: { family: 'Inter' },
+                    xaxis: { title: 'Date', hoverformat: '%B %d, %Y' },
+                    yaxis: { title: 'Load (MWh)' },
+                    hovermode: 'x unified',
+                    hoverlabel: { font: { family: 'Inter' } },
+                    legend: { orientation: 'h', y: -0.15 },
+                    margin: { t: 60, b: 80, l: 70, r: 30 }
+                };
+
+                Plotly.newPlot('load-chart', traces, layout, { responsive: true });
+
+                // IAD Summer 2025 scatter: temp vs load (May 23 – Aug 23)
+                fetch('summer_hourly.json')
+                    .then(r => r.json())
+                    .then(sdata => {
+                        var iad = sdata['IAD'];
+                        var scatterTrace = {
+                            x: iad.temp,
+                            y: iad.load,
+                            type: 'scatter',
+                            mode: 'markers',
+                            marker: { size: 4, color: colors['IAD'], opacity: 0.5 },
+                            customdata: iad.times.map((t, i) => [t, Math.round(iad.temp[i] * 9/5 + 32)]),
+                            hovertemplate:
+                                '<b>%{customdata[0]}</b><br>' +
+                                '%{y:.0f} MWh  %{x:.0f}\u00B0C/%{customdata[1]}\u00B0F' +
+                                '<extra></extra>'
+                        };
+
+                        var scatterLayout = {
+                            title: { text: 'IAD: Temperature vs Load — Summer 2025', font: { family: 'Inter', size: 18 } },
+                            font: { family: 'Inter' },
+                            xaxis: { title: 'Temperature (\u00B0C)' },
+                            yaxis: { title: 'Load (MWh)' },
+                            hovermode: 'closest',
+                            hoverlabel: { font: { family: 'Inter' } },
+                            showlegend: false,
+                            margin: { t: 60, b: 80, l: 70, r: 30 }
+                        };
+
+                        Plotly.newPlot('load-chart-summer', [scatterTrace], scatterLayout, { responsive: true });
+                    });
+            });
     }
 </script>
 </body>
