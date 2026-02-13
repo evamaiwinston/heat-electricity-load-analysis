@@ -111,7 +111,7 @@
 <body>
     <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('map-tab', this)">Map</button>
-        <button class="tab-btn" onclick="switchTab('tab2', this)">Tab 2</button>
+        <button class="tab-btn" onclick="switchTab('tab2', this)">Statistics</button>
     </div>
 
     <div id="map-tab" class="tab-panel active">
@@ -559,7 +559,7 @@
                 var histTrace = {
                     x: scores,
                     type: 'histogram',
-                    marker: { color: '#6366f1' },
+                    marker: { color: '#a8a8a8', line: { color: '#292828', width: 1 } },
                     xbins: { start: 0, end: 100, size: 5 },
                     hovertemplate: '%{x} pts<br>%{y} facilities<extra></extra>'
                 };
