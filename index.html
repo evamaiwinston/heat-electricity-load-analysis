@@ -234,7 +234,7 @@
 
                 // Instead of bindPopup, use click event
                 marker.on('click', function() {
-                    showFacilityDetails(facility);
+                    showFacilityDetails(facility, marker, color);
                 });
 
                 marker.addTo(map);
@@ -247,6 +247,53 @@
                mw > 75  ? '#ff69b4' :
                mw > 20  ? '#ff6600' :
                           '#ffaa00';
+    }
+
+    function calcExemptionScore(f) {
+        var score = 0;
+
+        // 1. Power (28 pts) - based on capacity_mw
+        if (f.capacity_mw !== null && f.capacity_mw !== undefined) {
+            if (f.capacity_mw <= 20) score += 28;
+            else if (f.capacity_mw <= 75) score += 18;
+            else if (f.capacity_mw <= 200) score += 7;
+        }
+
+        // 2. Environmental Justice (20 pts)
+        var ejKeys = ['ej_particulate_matter','ej_ozone','ej_diesel_pm','ej_nitrogen_dioxide',
+                      'ej_traffic','ej_hazardous_waste','ej_superfund','ej_rmp','ej_ust',
+                      'ej_toxic_air','ej_wastewater','ej_lead_paint','ej_drinking_water'];
+        var maxEj = 0;
+        ejKeys.forEach(function(k) { if (f[k] !== null && f[k] > maxEj) maxEj = f[k]; });
+        if (maxEj < 80) score += 20;
+
+        // 3. Population (15 pts)
+        if (f.pop_within_mile !== null && f.pop_within_mile !== undefined) {
+            if (f.pop_within_mile < 1000) score += 15;
+            else if (f.pop_within_mile < 5000) score += 10;
+            else if (f.pop_within_mile < 10000) score += 5;
+        }
+
+        // 4. Water Stress (12 pts)
+        var ws = f.water_stress_index || '';
+        if (ws.indexOf('Low') === 0) score += 12;
+        else if (ws === 'Medium - High (20-40%)') score += 6;
+
+        // 5-8. Remaining 25 pts: all 0 (no data)
+
+        return score;
+    }
+
+    function scoreTier(score) {
+        if (score >= 80) return 'Full Exemption';
+        if (score >= 60) return 'Partial Exemption';
+        return 'No Exemption';
+    }
+
+    function scoreColor(score) {
+        if (score >= 80) return '#16a34a';
+        if (score >= 60) return '#ca8a04';
+        return '#dc2626';
     }
 
     function fmt(val, suffix) {
@@ -274,8 +321,35 @@
             </div>`;
     }
 
-    function showFacilityDetails(facility) {
+    var selectedMarker = null;
+    var selectedMarkerColor = null;
+
+    function selectMarker(marker, color) {
+        // Remove border from previously selected marker
+        if (selectedMarker) {
+            var prevIcon = L.divIcon({
+                className: '',
+                html: '<div style="width:18px;height:18px;background:' + selectedMarkerColor + ';opacity:0.85;"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            selectedMarker.setIcon(prevIcon);
+        }
+        // Add black border to newly selected marker
+        selectedMarker = marker;
+        selectedMarkerColor = color;
+        var newIcon = L.divIcon({
+            className: '',
+            html: '<div style="width:18px;height:18px;background:' + color + ';opacity:0.85;border:2px solid #000;box-sizing:border-box;"></div>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9]
+        });
+        marker.setIcon(newIcon);
+    }
+
+    function showFacilityDetails(facility, marker, color) {
         document.getElementById('sidebar').classList.add('active');
+        selectMarker(marker, color);
 
         const households = facility.capacity_mw !== null
             ? Math.round(facility.capacity_mw * 1000 / 1.2).toLocaleString()
@@ -315,6 +389,12 @@
                 <span style="font-size:12px;color:#555;"> homes</span>
             </div>
 
+            <div style="background:#f9fafb;border-radius:6px;padding:10px;margin:12px 0;text-align:center;border:1px solid ${scoreColor(calcExemptionScore(facility))}30;">
+                <span style="font-size:12px;color:#555;">Exemption Score </span>
+                <strong style="font-size:16px;color:${scoreColor(calcExemptionScore(facility))};">${calcExemptionScore(facility)}/100</strong>
+                <div style="font-size:11px;color:${scoreColor(calcExemptionScore(facility))};margin-top:2px;">${scoreTier(calcExemptionScore(facility))}</div>
+            </div>
+
             <h3 style="font-size:13px;margin-top:28px;margin-bottom:14px;">Environmental Justice Scores - National Percentiles</h3>
             ${ejBar('Particulate Matter', facility.ej_particulate_matter)}
             ${ejBar('Diesel Particulate Matter', facility.ej_diesel_pm)}
@@ -325,6 +405,17 @@
 
     function closeSidebar() {
         document.getElementById('sidebar').classList.remove('active');
+        if (selectedMarker) {
+            var prevIcon = L.divIcon({
+                className: '',
+                html: '<div style="width:18px;height:18px;background:' + selectedMarkerColor + ';opacity:0.85;"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            selectedMarker.setIcon(prevIcon);
+            selectedMarker = null;
+            selectedMarkerColor = null;
+        }
     }
 
     var chartBuilt = false;
@@ -351,20 +442,62 @@
         fetch('daily_load.json')
             .then(r => r.json())
             .then(data => {
-                var colors = { IAD: '#e67e22', BOS: '#3498db', NYC: '#e74c3c' };
-                var order = ['IAD', 'NYC', 'BOS'];
+                var colors = { IAD: '#e67e22' };
+                var order = ['IAD'];
                 var traces = order.map(loc => ({
                     x: data[loc].dates,
                     y: data[loc].load,
-                    name: loc,
+                    name: '',
                     type: 'scatter',
                     mode: 'lines',
                     line: { width: 1.5, color: colors[loc] },
                     customdata: data[loc].temp.map(c => [c, Math.round(c * 9/5 + 32)]),
                     hovertemplate:
-                        '<b>' + loc + '</b>  %{y:.0f} MWh  %{customdata[0]:.0f}\u00B0C/%{customdata[1]}\u00B0F' +
+                        '%{y:.0f} MWh  %{customdata[0]:.0f}\u00B0C/%{customdata[1]}\u00B0F' +
                         '<extra></extra>'
                 }));
+
+                // Compute summer peak loads for annotations
+                var iadDates = data['IAD'].dates;
+                var iadLoad = data['IAD'].load;
+                var summers = [
+                    { year: 2023, x0: '2023-06-01', x1: '2023-08-31' },
+                    { year: 2024, x0: '2024-06-01', x1: '2024-08-31' },
+                    { year: 2025, x0: '2025-06-01', x1: '2025-08-31' }
+                ];
+
+                var shapes = summers.map(s => ({
+                    type: 'rect',
+                    xref: 'x', yref: 'paper',
+                    x0: s.x0, x1: s.x1,
+                    y0: 0, y1: 1,
+                    fillcolor: 'rgba(255, 140, 0, 0.12)',
+                    line: { width: 0 }
+                }));
+
+                var annotations = summers.map(s => {
+                    var peakVal = 0;
+                    for (var i = 0; i < iadDates.length; i++) {
+                        var d = iadDates[i];
+                        if (d >= s.x0 && d <= s.x1 && iadLoad[i] > peakVal) {
+                            peakVal = iadLoad[i];
+                        }
+                    }
+                    return {
+                        x: s.x0.replace('-06-', '-07-').replace('-01', '-15'),
+                        y: peakVal,
+                        xref: 'x', yref: 'y',
+                        text: 'Summer ' + s.year + '<br><b>' + Math.round(peakVal).toLocaleString() + ' MWh</b>',
+                        showarrow: true,
+                        arrowhead: 2,
+                        ax: 0, ay: -35,
+                        font: { family: 'Inter', size: 12 },
+                        bgcolor: 'rgba(255,255,255,0.85)',
+                        bordercolor: '#e67e22',
+                        borderwidth: 1,
+                        borderpad: 4
+                    };
+                });
 
                 var layout = {
                     title: { text: 'Daily Average Load Over Time', font: { family: 'Inter', size: 18 } },
@@ -373,43 +506,42 @@
                     yaxis: { title: 'Load (MWh)' },
                     hovermode: 'x unified',
                     hoverlabel: { font: { family: 'Inter' } },
-                    legend: { orientation: 'h', y: -0.15 },
-                    margin: { t: 60, b: 80, l: 70, r: 30 }
+                    showlegend: false,
+                    margin: { t: 60, b: 80, l: 70, r: 30 },
+                    shapes: shapes,
+                    annotations: annotations
                 };
 
                 Plotly.newPlot('load-chart', traces, layout, { responsive: true });
 
-                // IAD Summer 2025 scatter: temp vs load (May 23 – Aug 23)
-                fetch('summer_hourly.json')
-                    .then(r => r.json())
-                    .then(sdata => {
-                        var iad = sdata['IAD'];
-                        var scatterTrace = {
-                            x: iad.temp,
-                            y: iad.load,
-                            type: 'scatter',
-                            mode: 'markers',
-                            marker: { size: 4, color: colors['IAD'], opacity: 0.5 },
-                            customdata: iad.times.map((t, i) => [t, Math.round(iad.temp[i] * 9/5 + 32)]),
-                            hovertemplate:
-                                '<b>%{customdata[0]}</b><br>' +
-                                '%{y:.0f} MWh  %{x:.0f}\u00B0C/%{customdata[1]}\u00B0F' +
-                                '<extra></extra>'
-                        };
+                // Pie chart: DC load, peak summer load, remaining capacity
+                var GRID_CAPACITY = 27000;
+                var DC_LOAD_50 = 10027;
+                var PEAK_SUMMER = 23905;
+                var OTHER_PEAK = PEAK_SUMMER - DC_LOAD_50;
+                var REMAINING = GRID_CAPACITY - PEAK_SUMMER;
 
-                        var scatterLayout = {
-                            title: { text: 'IAD: Temperature vs Load — Summer 2025', font: { family: 'Inter', size: 18 } },
-                            font: { family: 'Inter' },
-                            xaxis: { title: 'Temperature (\u00B0C)' },
-                            yaxis: { title: 'Load (MWh)' },
-                            hovermode: 'closest',
-                            hoverlabel: { font: { family: 'Inter' } },
-                            showlegend: false,
-                            margin: { t: 60, b: 80, l: 70, r: 30 }
-                        };
+                var pieTrace = {
+                    labels: ['Data Center Load', 'Peak Summer Load', 'Remaining Grid Capacity'],
+                    values: [DC_LOAD_50, OTHER_PEAK, REMAINING],
+                    type: 'pie',
+                    marker: { colors: ['#333', '#e67e22', '#d3d3d3'] },
+                    textinfo: 'percent',
+                    textfont: { family: 'Inter', size: 14 },
+                    hovertemplate: ['%{label}<br>%{value:,.0f} MW (%{percent})<extra></extra>',
+                        '%{label}<br>' + PEAK_SUMMER.toLocaleString() + ' MW (incl. data centers)<extra></extra>',
+                        '%{label}<br>%{value:,.0f} MW (%{percent})<extra></extra>']
+                };
 
-                        Plotly.newPlot('load-chart-summer', [scatterTrace], scatterLayout, { responsive: true });
-                    });
+                var pieLayout = {
+                    title: { text: 'Grid Capacity Breakdown', font: { family: 'Inter', size: 18 } },
+                    font: { family: 'Inter' },
+                    hoverlabel: { font: { family: 'Inter' } },
+                    legend: { font: { family: 'Inter', size: 13 } },
+                    margin: { t: 60, b: 40, l: 30, r: 30 }
+                };
+
+                Plotly.newPlot('load-chart-summer', [pieTrace], pieLayout, { responsive: true });
             });
     }
 </script>
